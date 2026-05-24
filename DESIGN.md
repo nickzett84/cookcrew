@@ -373,6 +373,7 @@ In rough priority order, when we revisit:
 6. Multi-recipe kitchens (cooking two dishes at once)
 7. Timer integration (when a task says "bake 20 minutes," set a real timer)
 8. **Disconnect detection + sous-chef auto-promotion.** Trimmed from v1 Phase 6 — see decision log 2026-05-12. Needs client heartbeat (cooks update `last_seen_at` every ~15s) + a `claim-host` edge function that any cook can call. The function double-checks `head chef.last_seen_at` is stale, then atomically swaps `main_cook_id ← sous_chef_id` and clears `sous_chef_id`. UI flips on the realtime UPDATE.
+9. **iOS Share Extension for recipe import from Safari / NYT Cooking / other browsers.** User selects a recipe URL in another app → taps Share → picks CookCrew → the URL is handed off and parsed via `parse-recipe`. Requires a separate iOS target (not OTA-able — full `eas build` rebuild needed to ship it), Expo config plugin to declare the extension, and an inter-process channel to pass the URL from the extension into the main app. Worth doing once we know real users want it.
 
 ---
 

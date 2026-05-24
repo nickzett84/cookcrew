@@ -29,6 +29,7 @@ Tracked here so they don't get forgotten. Ignore unless you're explicitly workin
 
 - **Disconnect detection + sous-chef auto-promotion deferred to v2.** Original DESIGN.md §6 specced this; we trimmed it during Phase 6 (see decision log). For v1, sous chef is appointed manually and has delegate powers, but isn't auto-promoted if the head chef drops. If the head chef loses connection, the recipe is locked until they reconnect — recoverable but not graceful. Revisit if testing surfaces real pain.
 - **Force-quit-and-reopen loses kitchen session.** The `device_id` is persisted in Keychain so the server still remembers the cook, but the app doesn't auto-rejoin on launch — the cook is sent back to Landing and has to re-enter the code. Surfaced during the first TestFlight test. Not a blocker, but worth a "rejoin your last kitchen?" flow in v2.
+- **iOS Share Extension** for recipe import from Safari / NYT Cooking, deferred to v2. Not OTA-able (separate iOS target, requires full rebuild). See DESIGN.md §11 item 9.
 
 ### Dev server + testing
 
