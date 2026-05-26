@@ -188,37 +188,41 @@ export function AskTab() {
         {includeContext && currentTask && (
           <View
             style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
               paddingHorizontal: 10,
-              paddingVertical: 6,
+              paddingVertical: 8,
               borderRadius: 10,
               backgroundColor: colors.accentSoft,
-              alignSelf: 'flex-start',
-              maxWidth: '100%',
+              alignSelf: 'stretch',
             }}
           >
-            <Ionicons name="bookmark" size={12} color={colors.accent} />
-            <Text
+            <View
               style={{
-                fontFamily: fonts.bodyMed,
-                fontSize: sizes.xs,
-                color: colors.accent,
-                letterSpacing: 0.4,
-                textTransform: 'uppercase',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 6,
+                marginBottom: 4,
               }}
             >
-              You're on
-            </Text>
+              <Ionicons name="bookmark" size={12} color={colors.accent} />
+              <Text
+                style={{
+                  fontFamily: fonts.bodyMed,
+                  fontSize: sizes.xs,
+                  color: colors.accent,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                }}
+              >
+                You're on
+              </Text>
+            </View>
             <Text
               style={{
-                flex: 1,
                 fontFamily: fonts.body,
                 fontSize: sizes.sm,
                 color: colors.ink,
+                lineHeight: 18,
               }}
-              numberOfLines={1}
             >
               {currentTask.description}
             </Text>

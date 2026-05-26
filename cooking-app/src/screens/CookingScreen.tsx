@@ -256,20 +256,44 @@ export function CookingScreen({ navigation }: Props) {
           cooks={cooks.map((c) => ({ name: c.name, color: c.color }))}
           onAvatarsPress={() => setPeopleOpen(true)}
         />
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
-          <ActivityIndicator color={colors.inkFaint} />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 }}>
+          <View
+            style={{
+              width: 72,
+              height: 72,
+              borderRadius: 36,
+              backgroundColor: colors.accentSoft,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 20,
+            }}
+          >
+            <Ionicons name="restaurant-outline" size={32} color={colors.accent} />
+          </View>
+          <Text
+            style={{
+              fontFamily: fonts.display,
+              fontSize: sizes.xxl,
+              color: colors.ink,
+              letterSpacing: -0.3,
+              textAlign: 'center',
+              marginBottom: 8,
+            }}
+          >
+            Hang tight
+          </Text>
           <Text
             style={{
               fontFamily: fonts.body,
               fontSize: sizes.md,
               color: colors.inkSoft,
               textAlign: 'center',
-              marginTop: 12,
               lineHeight: 22,
             }}
           >
-            Hang tight. The head chef is still getting the recipe ready.
+            The head chef is still getting the recipe ready.
           </Text>
+          <ActivityIndicator color={colors.inkFaint} style={{ marginTop: 24 }} />
         </View>
         <PeopleSheet
           visible={peopleOpen}
