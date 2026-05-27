@@ -6,6 +6,9 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RecipeParsingOverlay } from '../components/RecipeParsingOverlay';
+import { CodeChip } from '../components/CodeChip';
+import { AvatarStack } from '../components/AvatarStack';
+import { PeopleSheet } from './PeopleSheet';
 import { colors, fonts, sizes, space } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { useKitchen } from '../lib/kitchen';
@@ -17,8 +20,9 @@ type Props = NativeStackScreenProps<RootStackParamList, 'RecipeImport'>;
 const PARSING_MIN_MS = 800; // hold the parsing overlay so it doesn't flash on fast parses
 
 export function RecipeImportScreen({ navigation }: Props) {
-  const { kitchen, deviceId } = useKitchen();
+  const { kitchen, deviceId, cooks, endKitchen, leaveKitchen } = useKitchen();
   const [parsing, setParsing] = useState(false);
+  const [peopleOpen, setPeopleOpen] = useState(false);
 
   if (!kitchen || !deviceId) {
     navigation.replace('Landing');
@@ -127,14 +131,30 @@ export function RecipeImportScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }}>
       <View style={{ flex: 1, paddingHorizontal: 18, paddingTop: 8 }}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          hitSlop={12}
-          style={{ alignSelf: 'flex-start' }}
-          disabled={parsing}
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+          }}
         >
-          <Ionicons name="chevron-back" size={28} color={colors.inkSoft} />
-        </Pressable>
+          <Pressable
+            onPress={() => navigation.goBack()}
+            hitSlop={12}
+            disabled={parsing}
+          >
+            <Ionicons name="chevron-back" size={28} color={colors.inkSoft} />
+          </Pressable>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <CodeChip code={kitchen.code} />
+            <Pressable onPress={() => setPeopleOpen(true)} hitSlop={6}>
+              <AvatarStack
+                cooks={cooks.map((c) => ({ name: c.name, color: c.color }))}
+                size={28}
+              />
+            </Pressable>
+          </View>
+        </View>
 
         <Text
           style={{
@@ -203,6 +223,61 @@ export function RecipeImportScreen({ navigation }: Props) {
       </View>
 
       <RecipeParsingOverlay visible={parsing} />
+
+      <PeopleSheet
+        visible={peopleOpen}
+        onClose={() => setPeopleOpen(false)}
+        onEndKitchen={() => {
+          setPeopleOpen(false);
+          Alert.alert(
+            'End this kitchen?',
+            'Anyone who joined will be sent back to the start.',
+            [
+              { text: 'Never mind', style: 'cancel' },
+              {
+                text: 'End kitchen',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await endKitchen();
+                    navigation.popToTop();
+                  } catch (e) {
+                    Alert.alert(
+                      'Could not end kitchen',
+                      e instanceof Error ? e.message : 'Try again.',
+                    );
+                  }
+                },
+              },
+            ],
+          );
+        }}
+        onLeaveKitchen={() => {
+          setPeopleOpen(false);
+          Alert.alert(
+            'Leave this kitchen?',
+            'You can rejoin with the code anytime.',
+            [
+              { text: 'Never mind', style: 'cancel' },
+              {
+                text: 'Leave',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await leaveKitchen();
+                    navigation.popToTop();
+                  } catch (e) {
+                    Alert.alert(
+                      'Could not leave',
+                      e instanceof Error ? e.message : 'Try again.',
+                    );
+                  }
+                },
+              },
+            ],
+          );
+        }}
+      />
     </SafeAreaView>
   );
 }

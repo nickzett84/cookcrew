@@ -16,6 +16,9 @@ import DraggableFlatList, {
 } from 'react-native-draggable-flatlist';
 import { Btn } from '../components/Btn';
 import { EditModal } from '../components/EditModal';
+import { CodeChip } from '../components/CodeChip';
+import { AvatarStack } from '../components/AvatarStack';
+import { PeopleSheet } from './PeopleSheet';
 import { colors, fonts, sizes, space } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { useKitchen } from '../lib/kitchen';
@@ -46,7 +49,8 @@ type RowItem =
   | { type: 'addSection'; key: string };
 
 export function RecipeReviewScreen({ navigation, route }: Props) {
-  const { deviceId, setRecipe: setProviderRecipe } = useKitchen();
+  const { kitchen, deviceId, cooks, endKitchen, leaveKitchen, setRecipe: setProviderRecipe } = useKitchen();
+  const [peopleOpen, setPeopleOpen] = useState(false);
   const initial = route.params.parsed;
 
   const [recipe, setRecipe] = useState<Recipe>(initial.recipe);
@@ -501,18 +505,22 @@ export function RecipeReviewScreen({ navigation, route }: Props) {
           <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
             <Ionicons name="chevron-back" size={28} color={colors.inkSoft} />
           </Pressable>
-          <Text
+          <View
             style={{
-              fontFamily: fonts.display,
-              fontSize: sizes.xs,
-              color: colors.sage,
-              letterSpacing: 0.6,
-              textTransform: 'uppercase',
               marginLeft: 'auto',
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 10,
             }}
           >
-            Auto-saved
-          </Text>
+            {kitchen && <CodeChip code={kitchen.code} />}
+            <Pressable onPress={() => setPeopleOpen(true)} hitSlop={6}>
+              <AvatarStack
+                cooks={cooks.map((c) => ({ name: c.name, color: c.color }))}
+                size={28}
+              />
+            </Pressable>
+          </View>
         </View>
 
         <View style={{ flex: 1 }}>
@@ -606,6 +614,61 @@ export function RecipeReviewScreen({ navigation, route }: Props) {
               }
             : undefined
         }
+      />
+
+      <PeopleSheet
+        visible={peopleOpen}
+        onClose={() => setPeopleOpen(false)}
+        onEndKitchen={() => {
+          setPeopleOpen(false);
+          Alert.alert(
+            'End this kitchen?',
+            'Anyone who joined will be sent back to the start.',
+            [
+              { text: 'Never mind', style: 'cancel' },
+              {
+                text: 'End kitchen',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await endKitchen();
+                    navigation.popToTop();
+                  } catch (e) {
+                    Alert.alert(
+                      'Could not end kitchen',
+                      e instanceof Error ? e.message : 'Try again.',
+                    );
+                  }
+                },
+              },
+            ],
+          );
+        }}
+        onLeaveKitchen={() => {
+          setPeopleOpen(false);
+          Alert.alert(
+            'Leave this kitchen?',
+            'You can rejoin with the code anytime.',
+            [
+              { text: 'Never mind', style: 'cancel' },
+              {
+                text: 'Leave',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await leaveKitchen();
+                    navigation.popToTop();
+                  } catch (e) {
+                    Alert.alert(
+                      'Could not leave',
+                      e instanceof Error ? e.message : 'Try again.',
+                    );
+                  }
+                },
+              },
+            ],
+          );
+        }}
       />
     </SafeAreaView>
   );
