@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
+import { View, Text, Pressable, ScrollView, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -50,6 +50,16 @@ export function LobbyScreen({ navigation }: Props) {
     await Clipboard.setStringAsync(kitchen.code);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const onSendByText = async () => {
+    try {
+      await Share.share({
+        message: `Join my CookCrew kitchen — code ${kitchen.code}`,
+      });
+    } catch {
+      // user cancelled the share sheet — no-op
+    }
   };
 
   const onEnd = () => {
@@ -114,7 +124,7 @@ export function LobbyScreen({ navigation }: Props) {
         style={{ flex: 1 }}
         contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 }}
       >
-        {/* Share card */}
+        {/* Invite card */}
         <View
           style={{
             borderRadius: 16,
@@ -124,38 +134,39 @@ export function LobbyScreen({ navigation }: Props) {
             padding: 16,
           }}
         >
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontFamily: fonts.display,
-                  fontSize: sizes.xs,
-                  color: colors.inkSoft,
-                  letterSpacing: 0.6,
-                  textTransform: 'uppercase',
-                }}
-              >
-                Share code
-              </Text>
-              <Text
-                style={{
-                  fontFamily: fonts.mono,
-                  fontSize: 30,
-                  color: colors.ink,
-                  letterSpacing: 4,
-                  marginTop: 2,
-                }}
-              >
-                {kitchen.code}
-              </Text>
-            </View>
-            <Btn small kind="secondary" onPress={onCopy}>
-              {copied ? 'Copied!' : 'Copy'}
+          <Text
+            style={{
+              fontFamily: fonts.display,
+              fontSize: sizes.xs,
+              color: colors.inkSoft,
+              letterSpacing: 0.6,
+              textTransform: 'uppercase',
+            }}
+          >
+            Invite friends
+          </Text>
+          <Text
+            style={{
+              fontFamily: fonts.mono,
+              fontSize: 30,
+              color: colors.ink,
+              letterSpacing: 4,
+              marginTop: 2,
+            }}
+          >
+            {kitchen.code}
+          </Text>
+          <Text style={{ fontFamily: fonts.body, fontSize: sizes.sm, color: colors.inkSoft, marginTop: 6 }}>
+            Anyone with this code can join.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+            <Btn small kind="secondary" onPress={onCopy} style={{ flex: 1 }}>
+              {copied ? 'Copied!' : 'Copy code'}
+            </Btn>
+            <Btn small kind="secondary" onPress={onSendByText} style={{ flex: 1 }}>
+              Send by text
             </Btn>
           </View>
-          <Text style={{ fontFamily: fonts.body, fontSize: sizes.sm, color: colors.inkSoft, marginTop: 10 }}>
-            Share this with your friends so they can join.
-          </Text>
         </View>
 
         {/* Cooks list */}

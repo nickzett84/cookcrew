@@ -1,4 +1,4 @@
-import { Modal, View, Text, Pressable, Share, Alert } from 'react-native';
+import { Modal, View, Text, Pressable, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from '../components/Avatar';
 import { Chip } from '../components/Chip';
@@ -47,16 +47,6 @@ export function PeopleSheet({ visible, onClose, onEndKitchen, onLeaveKitchen }: 
         },
       ],
     );
-  };
-
-  const onInvite = async () => {
-    try {
-      await Share.share({
-        message: `Join my CookCrew kitchen — code ${kitchen.code}`,
-      });
-    } catch {
-      // user cancelled — no-op
-    }
   };
 
   return (
@@ -200,35 +190,6 @@ export function PeopleSheet({ visible, onClose, onEndKitchen, onLeaveKitchen }: 
               );
             })}
 
-            {cooks.length < KITCHEN_MAX && (
-              <Pressable
-                onPress={onInvite}
-                style={({ pressed }) => ({
-                  flexBasis: '48%',
-                  borderRadius: 12,
-                  borderWidth: 1.5,
-                  borderStyle: 'dashed',
-                  borderColor: colors.lineSoft,
-                  padding: 14,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  minHeight: 110,
-                  opacity: pressed ? 0.6 : 1,
-                })}
-              >
-                <Text style={{ fontSize: 28, color: colors.inkFaint, lineHeight: 32 }}>+</Text>
-                <Text
-                  style={{
-                    fontFamily: fonts.body,
-                    fontSize: sizes.sm,
-                    color: colors.inkSoft,
-                    marginTop: 4,
-                  }}
-                >
-                  invite more
-                </Text>
-              </Pressable>
-            )}
           </View>
 
           <View style={{ marginTop: space.lg }}>
