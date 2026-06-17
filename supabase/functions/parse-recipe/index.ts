@@ -1,11 +1,13 @@
 // POST /functions/v1/parse-recipe
-// Body: { kitchenId, sourcePath, sourceType: 'photo' | 'pdf', deviceId }
+// Body (image/PDF):   { kitchenId, sourcePath, sourceType: 'photo' | 'pdf', deviceId }
+// Body (text paste):  { kitchenId, text, sourceType: 'text', deviceId }
 // Returns: { recipe, sections, tasks, ingredients }
 //
-// Host-only. Uploads must be in the recipe-uploads bucket already (the client
-// uploads via storage.from('recipe-uploads').upload(path, file) before calling).
+// Host-only. For photo/pdf, uploads must be in the recipe-uploads bucket already
+// (the client uploads via storage.from('recipe-uploads').upload(path, file) before
+// calling). For text, the recipe text is sent inline in the request body.
 //
-// Calls Claude Opus 4.7 with the image/PDF via public URL + structured output
+// Calls Claude Opus 4.7 with the source content + structured output
 // (`output_config.format` with a JSON schema) so the response is guaranteed to
 // be valid JSON in the shape we want. The system prompt is cacheable — it's
 // reused across every parse and is large enough to clear the 4096-token min.
@@ -15,7 +17,7 @@ import { json, badRequest, notFound, forbidden, serverError } from '../_shared/r
 import { getAdminClient } from '../_shared/supabaseAdmin.ts';
 import { requireString, requireUuid, ValidationError } from '../_shared/validate.ts';
 
-const SYSTEM_PROMPT = `You are parsing a recipe image or PDF for CookCrew, a real-time collaborative cooking app for friends. A group of friends will cook this dish together, and the app will turn your output into a delegated task checklist they can each tick off live as they work through the recipe.
+const SYSTEM_PROMPT = `You are parsing a recipe (provided as an image, PDF, or plain text) for CookCrew, a real-time collaborative cooking app for friends. A group of friends will cook this dish together, and the app will turn your output into a delegated task checklist they can each tick off live as they work through the recipe.
 
 Your output is JSON, with this shape (enforced by the schema):
 {
@@ -51,7 +53,7 @@ Rules for tasks:
 - Include quantities and times where the source provides them ("Simmer sauce 20 minutes").
 - Don't invent steps the recipe doesn't include.
 
-If the image is too blurry or unrelated to a recipe, return your best-effort partial result rather than refusing — the host will review and edit before the kitchen goes live.`;
+If the source is unclear, partial, or only loosely a recipe, return your best-effort partial result rather than refusing — the host will review and edit before the kitchen goes live.`;
 
 const RECIPE_SCHEMA = {
   type: 'object',
@@ -93,13 +95,24 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json();
     const kitchenId = requireUuid(body.kitchenId, 'kitchenId');
-    const sourcePath = requireString(body.sourcePath, 'sourcePath', { min: 1, max: 500 });
     const sourceType = requireString(body.sourceType, 'sourceType');
     const deviceId = requireString(body.deviceId, 'deviceId', { min: 8, max: 64 });
 
-    if (sourceType !== 'photo' && sourceType !== 'pdf') {
-      return badRequest("sourceType must be 'photo' or 'pdf'");
+    if (sourceType !== 'photo' && sourceType !== 'pdf' && sourceType !== 'text') {
+      return badRequest("sourceType must be 'photo', 'pdf', or 'text'");
     }
+
+    // For photo/pdf the client uploads to Storage first and passes the path.
+    // For text the recipe content is sent inline. Validate the right field for
+    // each path.
+    const sourcePath =
+      sourceType === 'text'
+        ? ''
+        : requireString(body.sourcePath, 'sourcePath', { min: 1, max: 500 });
+    const sourceText =
+      sourceType === 'text'
+        ? requireString(body.text, 'text', { min: 1, max: 20000 })
+        : '';
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!apiKey) {
@@ -131,14 +144,20 @@ Deno.serve(async (req) => {
     if (!cook) return forbidden('Not a member of this kitchen');
     if (kitchen.main_cook_id !== cook.id) return forbidden('Only the host can import recipes');
 
-    // Public URL for the uploaded file (bucket is public).
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const fileUrl = `${supabaseUrl}/storage/v1/object/public/recipe-uploads/${sourcePath}`;
-
-    const fileBlock =
-      sourceType === 'photo'
-        ? { type: 'image', source: { type: 'url', url: fileUrl } }
-        : { type: 'document', source: { type: 'url', url: fileUrl } };
+    // For photo/pdf: build a public URL to the uploaded file (bucket is public)
+    // and reference it as an image/document block. For text: send the recipe
+    // text directly as a text content block (no Storage roundtrip needed).
+    let sourceBlock: Record<string, unknown>;
+    if (sourceType === 'text') {
+      sourceBlock = { type: 'text', text: sourceText };
+    } else {
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const fileUrl = `${supabaseUrl}/storage/v1/object/public/recipe-uploads/${sourcePath}`;
+      sourceBlock =
+        sourceType === 'photo'
+          ? { type: 'image', source: { type: 'url', url: fileUrl } }
+          : { type: 'document', source: { type: 'url', url: fileUrl } };
+    }
 
     // Call Claude. Raw fetch to avoid an npm SDK dependency in the edge runtime.
     const apiResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -165,7 +184,7 @@ Deno.serve(async (req) => {
           {
             role: 'user',
             content: [
-              fileBlock,
+              sourceBlock,
               { type: 'text', text: 'Parse this recipe into the structured JSON format.' },
             ],
           },
@@ -177,7 +196,7 @@ Deno.serve(async (req) => {
       const errBody = await apiResp.text();
       console.error('[parse-recipe] Anthropic error', apiResp.status, errBody);
       return json(
-        { error: "We had trouble reading that. Try a clearer photo, or type it out." },
+        { error: "We had trouble reading that. Try again, or type it out by hand." },
         502,
       );
     }
@@ -192,7 +211,7 @@ Deno.serve(async (req) => {
     try {
       parsed = JSON.parse(textBlock.text);
     } catch {
-      return json({ error: 'Could not parse recipe — try a clearer photo.' }, 502);
+      return json({ error: 'Could not parse the recipe. Try again or type it out by hand.' }, 502);
     }
 
     if (

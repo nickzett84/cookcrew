@@ -118,12 +118,21 @@ export const api = {
   endKitchen: (input: { kitchenId: string; deviceId: string }) =>
     invoke<{ kitchen: Kitchen }>('end-kitchen', input),
 
-  parseRecipe: (input: {
-    kitchenId: string;
-    sourcePath: string;
-    sourceType: 'photo' | 'pdf';
-    deviceId: string;
-  }) => invoke<ParsedRecipe>('parse-recipe', input),
+  parseRecipe: (
+    input:
+      | {
+          kitchenId: string;
+          sourcePath: string;
+          sourceType: 'photo' | 'pdf';
+          deviceId: string;
+        }
+      | {
+          kitchenId: string;
+          text: string;
+          sourceType: 'text';
+          deviceId: string;
+        },
+  ) => invoke<ParsedRecipe>('parse-recipe', input),
 
   createManualRecipe: (input: { kitchenId: string; deviceId: string }) =>
     invoke<ParsedRecipe>('create-manual-recipe', input),

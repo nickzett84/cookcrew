@@ -1,5 +1,15 @@
 import { useState } from 'react';
-import { View, Text, Pressable, Alert, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  Pressable,
+  Alert,
+  ScrollView,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,6 +33,8 @@ export function RecipeImportScreen({ navigation }: Props) {
   const { kitchen, deviceId, cooks, endKitchen, leaveKitchen } = useKitchen();
   const [parsing, setParsing] = useState(false);
   const [peopleOpen, setPeopleOpen] = useState(false);
+  const [textOpen, setTextOpen] = useState(false);
+  const [textValue, setTextValue] = useState('');
 
   if (!kitchen || !deviceId) {
     navigation.replace('Landing');
@@ -76,6 +88,47 @@ export function RecipeImportScreen({ navigation }: Props) {
     } finally {
       setParsing(false);
     }
+  };
+
+  const runImportText = async (text: string) => {
+    setParsing(true);
+    const startedAt = Date.now();
+    try {
+      const parsed = await api.parseRecipe({
+        kitchenId: kitchen.id,
+        text,
+        sourceType: 'text',
+        deviceId,
+      });
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < PARSING_MIN_MS) {
+        await new Promise((r) => setTimeout(r, PARSING_MIN_MS - elapsed));
+      }
+      navigation.replace('RecipeReview', { parsed });
+    } catch (e) {
+      Alert.alert(
+        "Couldn't parse that text",
+        e instanceof Error ? e.message : 'Try again, or type it out by hand.',
+      );
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const onPasteText = () => {
+    if (parsing) return;
+    setTextValue('');
+    setTextOpen(true);
+  };
+
+  const onParseText = async () => {
+    const trimmed = textValue.trim();
+    if (trimmed.length < 20) {
+      Alert.alert('Need a bit more', 'Paste at least a few lines of the recipe before parsing.');
+      return;
+    }
+    setTextOpen(false);
+    await runImportText(trimmed);
   };
 
   const onTakePhoto = async () => {
@@ -193,6 +246,13 @@ export function RecipeImportScreen({ navigation }: Props) {
             onPress={onPickPdf}
             disabled={parsing}
           />
+          <ImportCard
+            icon="clipboard-outline"
+            title="Paste recipe text"
+            sub="From Notes, an email, or anywhere else"
+            onPress={onPasteText}
+            disabled={parsing}
+          />
         </ScrollView>
 
         <View style={{ alignItems: 'center', paddingBottom: space.lg, paddingTop: space.md }}>
@@ -223,6 +283,124 @@ export function RecipeImportScreen({ navigation }: Props) {
       </View>
 
       <RecipeParsingOverlay visible={parsing} />
+
+      <Modal
+        visible={textOpen}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setTextOpen(false)}
+      >
+        <Pressable
+          onPress={() => setTextOpen(false)}
+          style={{ flex: 1, backgroundColor: 'rgba(40,30,20,0.4)', justifyContent: 'flex-end' }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: colors.paper,
+              borderTopLeftRadius: 18,
+              borderTopRightRadius: 18,
+              paddingHorizontal: 18,
+              paddingTop: 10,
+              paddingBottom: space.xxl,
+              maxHeight: '90%',
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                backgroundColor: colors.lineSoft,
+                borderRadius: 4,
+                alignSelf: 'center',
+                marginBottom: 14,
+              }}
+            />
+            <Text
+              style={{
+                fontFamily: fonts.display,
+                fontSize: sizes.xl,
+                color: colors.ink,
+                letterSpacing: -0.3,
+              }}
+            >
+              Paste recipe text
+            </Text>
+            <Text
+              style={{
+                fontFamily: fonts.body,
+                fontSize: sizes.sm,
+                color: colors.inkSoft,
+                marginTop: 4,
+                marginBottom: 12,
+              }}
+            >
+              Long-press to paste from Notes, an email, or anywhere else.
+            </Text>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              keyboardVerticalOffset={20}
+            >
+              <TextInput
+                value={textValue}
+                onChangeText={setTextValue}
+                multiline
+                placeholder="Paste the recipe here…"
+                placeholderTextColor={colors.inkFaint}
+                style={{
+                  minHeight: 240,
+                  maxHeight: 360,
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: colors.lineSoft,
+                  backgroundColor: colors.fillSoft,
+                  padding: 12,
+                  fontFamily: fonts.body,
+                  fontSize: sizes.md,
+                  color: colors.ink,
+                  lineHeight: 22,
+                  textAlignVertical: 'top',
+                }}
+                autoCorrect={false}
+                autoCapitalize="sentences"
+              />
+              <View style={{ flexDirection: 'row', gap: 8, marginTop: 14 }}>
+                <Pressable
+                  onPress={() => setTextOpen(false)}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    paddingVertical: 14,
+                    borderRadius: 14,
+                    borderWidth: 1,
+                    borderColor: colors.lineSoft,
+                    alignItems: 'center',
+                    opacity: pressed ? 0.7 : 1,
+                  })}
+                >
+                  <Text style={{ fontFamily: fonts.bodyMed, fontSize: sizes.md, color: colors.ink }}>
+                    Cancel
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={onParseText}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    paddingVertical: 14,
+                    borderRadius: 14,
+                    backgroundColor: colors.ink,
+                    alignItems: 'center',
+                    opacity: pressed ? 0.85 : 1,
+                  })}
+                >
+                  <Text style={{ fontFamily: fonts.bodyMed, fontSize: sizes.md, color: colors.paper }}>
+                    Parse recipe
+                  </Text>
+                </Pressable>
+              </View>
+            </KeyboardAvoidingView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <PeopleSheet
         visible={peopleOpen}
