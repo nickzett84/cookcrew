@@ -390,6 +390,42 @@ The stack currently runs on **Florian's dad's accounts**. Before charging money:
 - Supabase **paid** plan under Nick's own org (free tier won't carry paying users; don't put production billing on someone else's account).
 - Nick's own Anthropic account with billing + spend caps.
 
+## 11a. Phase 8 detail — Accounts (spec locked 2026-06-20)
+
+**Goal:** add real accounts for the **head chef only**; guests keep joining by code with a name. Establishes the durable identity that freemium metering (Phase 9) and history (Phase 11) build on. Scope is identity *only* — no rate limiting, metering, quota, or private-bucket work (those are Phase 9).
+
+**Identity model after Phase 8:**
+- Head chef (creates a kitchen) = Supabase Auth user (Sign in with Apple) **+** their `cooks` row. Must be signed in to create.
+- Guest (joins by code) = `device_id` only, unchanged. No sign-in. `device_id` stays as the guest mechanism; auth is layered on top for hosts.
+- Rationale: the host consumes the Claude spend (parsing) and is who we'll bill; guests cost ~nothing, so signup for them is pure friction. Side benefits: host can rejoin from any device, and we get a durable owner for history.
+
+**Why only host needs auth (and guest reads stay anonymous):** guests have no JWT, so realtime reads must remain anon-readable. This is intentional and unchanged from v1 — the join-by-code flow is the product's magic. Full RLS hardening (Phase 9) tightens *host* paths; guest reads stay code-gated by design.
+
+**Schema (one migration):**
+- `cooks.user_id uuid references auth.users(id)` — nullable; set for hosts, null for guests.
+- `kitchens.owner_user_id uuid references auth.users(id)` — nullable; the durable owner that "my kitchens"/history (Phase 11) keys off.
+- RLS: keep guest read access open; add policies for an authenticated user to see/manage their own `owner_user_id` rows. Only what accounts need — full hardening is Phase 9.
+
+**Edge functions:**
+- `create-kitchen` now requires the host signed in: client sends the user access token, function verifies via `admin.auth.getUser(token)` (manual verification inside the function for consistent generic errors, matching the existing in-function security pattern), then stamps `kitchens.owner_user_id` + `cooks.user_id`. **First function to verify a real JWT** — begins reversing the v1 `--no-verify-jwt` stance (decision log 2026-06-20).
+- `join-kitchen` / `leave-kitchen` / others: unchanged (guests stay anonymous).
+- New `delete-account` (see below).
+
+**Client:**
+- `supabase.ts`: enable auth (`persistSession: true`, `autoRefreshToken: true`) with a **SecureStore (Keychain) storage adapter** for tokens (CLAUDE.md mandate).
+- `expo-apple-authentication` native module → **forces a fresh `eas build` + TestFlight (not OTA-able)**. First non-OTA ship since launch.
+- New `AuthProvider` holding the session, alongside `KitchenProvider`.
+- Landing: "I'm cooking" checks for a session → if none, Sign in with Apple → then create. "I'm joining" untouched.
+- Minimal Settings/Profile screen (reached from the Landing footer where the version label sits): who you're signed in as, Sign out, **Delete account**.
+
+**Account deletion (Apple-mandated):** `delete-account` verifies the user, deletes the `auth.users` record, and **unlinks** their kitchens (`owner_user_id → null`, kitchen + recipe data preserved) — NOT a hard delete. Full "erase all my data" semantics deferred to Phase 11 when history makes "their data" a real surface (decision 2026-06-20). **Mid-cook guard:** if the user is in an active kitchen when they tap Delete account, block with a confirm ("You're in an active kitchen. End it first?") rather than yanking the session out from under co-cooks.
+
+**Decisions locked 2026-06-20:** (1) account deletion *unlinks* past kitchens, doesn't delete them — invisible to users until Phase 11. (2) Existing anonymous TestFlight kitchens are **not migrated** — throwaway test data; new model applies going forward.
+
+**Dashboard prerequisites (Nick/Florian, not code):** Apple Developer console — enable Sign in with Apple capability, create a Services ID + key, download the `.p8`. Supabase dashboard — enable Apple auth provider, paste the Apple credentials. Code can't be tested until these are done.
+
+**Done =** a TestFlight build where: creating a kitchen requires Sign in with Apple; the session survives a force-quit; join-by-code still works name-only; deleting your account from Settings actually removes the auth user and unlinks kitchens.
+
 ## 11b. v3 — reach & scale (deferred past commercial launch)
 
 1. **Android release.** Expo is already cross-platform; the work is testing + Play Store setup + re-homing iOS-only native bits (share extension). Fast-follow once iOS conversion is proven.
