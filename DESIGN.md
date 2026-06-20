@@ -392,6 +392,8 @@ The stack currently runs on **Florian's dad's accounts**. Before charging money:
 
 ## 11a. Phase 8 detail — Accounts (spec locked 2026-06-20)
 
+**Progress (2026-06-20): Track B (code foundation, no Apple) DONE + on `main`, not yet OTA'd — rides the Apple rebuild.** Migration applied (`cooks.user_id`, `kitchens.owner_user_id`); `create-kitchen` stamps the account when a host token is present (anon still works, verified); `delete-account` deployed; client has the SecureStore-backed auth session, `AuthProvider`/`useAuth`, auth-aware `api.invoke`, and a Settings screen. **Remaining (Track A + rebuild):** Apple Developer + Supabase dashboard config, install `expo-apple-authentication`, implement `signInWithApple`, gate create on sign-in, `eas build` + TestFlight.
+
 **Goal:** add real accounts for the **head chef only**; guests keep joining by code with a name. Establishes the durable identity that freemium metering (Phase 9) and history (Phase 11) build on. Scope is identity *only* — no rate limiting, metering, quota, or private-bucket work (those are Phase 9).
 
 **Identity model after Phase 8:**
