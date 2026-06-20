@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { View, Text, Pressable, ScrollView, Alert, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Btn } from '../components/Btn';
@@ -278,17 +279,31 @@ export function LobbyScreen({ navigation }: Props) {
           </>
         ) : (
           <>
-            <Text
+            <View
               style={{
-                fontFamily: fonts.body,
-                fontSize: sizes.sm,
-                color: colors.inkSoft,
-                textAlign: 'center',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 10,
+                paddingHorizontal: 14,
+                paddingVertical: 12,
+                borderRadius: 14,
+                backgroundColor: colors.accentSoft,
               }}
             >
-              Hang tight. The head chef is still getting the recipe ready.
-            </Text>
-            <Pressable onPress={onLeave} hitSlop={8} style={{ alignSelf: 'center' }} disabled={busy}>
+              <Ionicons name="restaurant-outline" size={18} color={colors.accent} />
+              <Text
+                style={{
+                  flex: 1,
+                  fontFamily: fonts.bodyMed,
+                  fontSize: sizes.sm,
+                  color: colors.ink,
+                  lineHeight: 20,
+                }}
+              >
+                Hang tight — the head chef is still getting the recipe ready.
+              </Text>
+            </View>
+            <Pressable onPress={onLeave} hitSlop={8} style={{ alignSelf: 'center', marginTop: 2 }} disabled={busy}>
               <Text style={{ fontFamily: fonts.bodyMed, fontSize: sizes.sm, color: colors.accent, opacity: 0.7 }}>
                 Leave kitchen
               </Text>
