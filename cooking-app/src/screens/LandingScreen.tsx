@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Btn } from '../components/Btn';
 import { HowItWorksSheet } from '../components/HowItWorksSheet';
@@ -79,6 +80,22 @@ export function LandingScreen({ navigation }: Props) {
           >
             <Text style={{ fontFamily: fonts.body, fontSize: sizes.xs, color: colors.accent }}>
               how does this work?
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate('Settings')}
+            hitSlop={12}
+            style={({ pressed }) => ({
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 5,
+              marginTop: 14,
+              opacity: pressed ? 0.5 : 1,
+            })}
+          >
+            <Ionicons name="settings-outline" size={13} color={colors.inkSoft} />
+            <Text style={{ fontFamily: fonts.body, fontSize: sizes.xs, color: colors.inkSoft }}>
+              Settings
             </Text>
           </Pressable>
           <Text

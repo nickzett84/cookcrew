@@ -1,7 +1,7 @@
 // Edge-function client. All kitchen mutations go through these — never
 // hit the kitchens/cooks tables directly from the app.
 
-import { SUPABASE_URL } from './supabase';
+import { SUPABASE_URL, supabase } from './supabase';
 
 const FN_BASE = `${SUPABASE_URL}/functions/v1`;
 
@@ -86,10 +86,19 @@ export type ChatMessage = {
   created_at: string;
 };
 
-async function invoke<T>(name: string, body: unknown): Promise<T> {
+// opts.auth = attach the signed-in host's access token so the function can
+// identify them. Harmless when signed out — no token is sent and the function
+// falls back to its anonymous path.
+async function invoke<T>(name: string, body: unknown, opts?: { auth?: boolean }): Promise<T> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' };
+  if (opts?.auth) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
   const resp = await fetch(`${FN_BASE}/${name}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify(body),
   });
   let data: any = null;
@@ -107,7 +116,9 @@ async function invoke<T>(name: string, body: unknown): Promise<T> {
 
 export const api = {
   createKitchen: (input: { name: string; color: string; deviceId: string }) =>
-    invoke<{ kitchen: Kitchen; cook: Cook }>('create-kitchen', input),
+    invoke<{ kitchen: Kitchen; cook: Cook }>('create-kitchen', input, { auth: true }),
+
+  deleteAccount: () => invoke<{ ok: true }>('delete-account', {}, { auth: true }),
 
   joinKitchen: (input: { code: string; name: string; color: string; deviceId: string }) =>
     invoke<{ kitchen: Kitchen; cook: Cook; cooks: Cook[] }>('join-kitchen', input),

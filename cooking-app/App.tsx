@@ -12,6 +12,7 @@ import {
 } from '@expo-google-fonts/geist';
 import { GeistMono_500Medium } from '@expo-google-fonts/geist-mono';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { AuthProvider } from './src/lib/AuthProvider';
 import { KitchenProvider } from './src/lib/KitchenProvider';
 import { colors } from './src/theme';
 
@@ -34,12 +35,14 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <KitchenProvider>
-          <NavigationContainer>
-            <RootNavigator />
-            <StatusBar style="dark" />
-          </NavigationContainer>
-        </KitchenProvider>
+        <AuthProvider>
+          <KitchenProvider>
+            <NavigationContainer>
+              <RootNavigator />
+              <StatusBar style="dark" />
+            </NavigationContainer>
+          </KitchenProvider>
+        </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

@@ -6,6 +6,7 @@ import { LobbyScreen } from '../screens/LobbyScreen';
 import { RecipeImportScreen } from '../screens/RecipeImportScreen';
 import { RecipeReviewScreen } from '../screens/RecipeReviewScreen';
 import { CookingScreen } from '../screens/CookingScreen';
+import { SettingsScreen } from '../screens/SettingsScreen';
 import { RootStackParamList } from './types';
 import { colors } from '../theme';
 
@@ -26,6 +27,7 @@ export function RootNavigator() {
       <Stack.Screen name="RecipeImport" component={RecipeImportScreen} />
       <Stack.Screen name="RecipeReview" component={RecipeReviewScreen} />
       <Stack.Screen name="Cooking" component={CookingScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
     </Stack.Navigator>
   );
 }

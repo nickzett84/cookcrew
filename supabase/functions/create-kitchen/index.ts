@@ -1,10 +1,16 @@
 // POST /functions/v1/create-kitchen
 // Body: { name, color, deviceId }
+// Auth: optional. If a signed-in host's access token is in the Authorization
+//   header, the kitchen + host cook are stamped with their account
+//   (owner_user_id / user_id). Anonymous calls (no token) still work — this is
+//   what keeps the current app running until Sign in with Apple is wired.
+//   Phase 9 tightens this to require auth.
 // Returns: { kitchen, cook }
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { json, badRequest, serverError } from '../_shared/response.ts';
 import { getAdminClient } from '../_shared/supabaseAdmin.ts';
+import { getUserId } from '../_shared/auth.ts';
 import { generateKitchenCode } from '../_shared/code.ts';
 import { requireString, requireHexColor, ValidationError } from '../_shared/validate.ts';
 
@@ -17,6 +23,10 @@ Deno.serve(async (req) => {
     const name = requireString(body.name, 'name', { min: 1, max: 30 });
     const color = requireHexColor(body.color);
     const deviceId = requireString(body.deviceId, 'deviceId', { min: 8, max: 64 });
+
+    // Null for anonymous (guest-style) creation; the host's auth user id when
+    // signed in. Stamped onto the kitchen + host cook below.
+    const ownerUserId = await getUserId(req);
 
     const supabase = getAdminClient();
 
@@ -41,7 +51,7 @@ Deno.serve(async (req) => {
     // Create the kitchen.
     const { data: kitchen, error: kErr } = await supabase
       .from('kitchens')
-      .insert({ code })
+      .insert({ code, owner_user_id: ownerUserId })
       .select()
       .single();
     if (kErr || !kitchen) return serverError(kErr?.message ?? 'Failed to create kitchen');
@@ -54,6 +64,7 @@ Deno.serve(async (req) => {
         name,
         color,
         device_id: deviceId,
+        user_id: ownerUserId,
       })
       .select()
       .single();

@@ -8,4 +8,5 @@ export type RootStackParamList = {
   RecipeImport: undefined;
   RecipeReview: { parsed: ParsedRecipe };
   Cooking: undefined;
+  Settings: undefined;
 };
