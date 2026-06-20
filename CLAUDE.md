@@ -22,6 +22,7 @@ If a request conflicts with either doc, flag the conflict before coding. Do not 
 - ✅ **Phase 5 (Ask Claude):** `AskTab` (`src/screens/AskTab.tsx`) replaces the placeholder — chat bubbles (user right, Claude left in terracotta tint), composer with auto-scroll, thinking indicator, "Include recipe context" toggle. Non-streaming: edge function returns the assistant message once Claude finishes, both rows persisted in `chat_messages`. New table `chat_messages` (migration `20260511112054_chat_messages.sql`) with `replica identity full`; shared per kitchen — every cook sees every Q+A via realtime on the existing `kitchen:<id>` channel. New edge function `ask-claude` calls **Haiku 4.5** with the persona as a cacheable system block + the recipe context (title, ingredients, steps with completion state) as a second block when the toggle is on. When the toggle is off, chat history is also dropped so prior recipe-grounded answers don't leak the recipe back in. **"You're on" chip** above the composer is auto-derived from the first uncompleted task in recipe order (not last-tapped) and the persona explicitly tells Claude not to over-anchor on it. When context is off and the user asks something recipe-specific, the persona prompts Claude to name the toggle ("Turn on 'Include recipe context' below the message box…") instead of pretending no recipe exists.
 - ✅ **Phase 6 (sous chef + section editing + host live-edit during cooking):** Scope trimmed for v1 — disconnect detection + auto-promotion (DESIGN.md §9 original Phase 6.B) was **flagged for v2** since it's hard to test reliably and the failure mode (recipe locked if head chef drops) is recoverable by rejoin. What shipped: **(A) Sous chef.** Migration `20260511141019_sous_chef.sql` adds the long-spec'd `kitchens.sous_chef_id` column. New edge function `set-sous-chef` (head-chef-only). PeopleSheet renders tappable cook tiles with an explicit "tap to make sous chef" sub-line, an `ink`-border + "head chef" chip on the host, a `steelSoft`-border + chef-hat badge + "sous chef" chip on the sous chef. **Sous chef has delegate powers** (matches `head chef` for assign-checkbox auth — `canManage = isHost || isSousChef`) but **not** recipe-edit, end-kitchen, or appoint-sous-chef. The "host" label was renamed to "head chef" everywhere user-facing. **(D) Section editing.** `update-recipe` gains `add_section` / `update_section` / `delete_section` actions (cascade to tasks via FK). RecipeReview screen: tap header to rename, long-press to delete (with task-count warning), "+ add section" at the bottom. Same set of gestures works on the Cook tab during cooking (head-chef only). Migration `20260511141842_recipe_sections_replica.sql` sets `replica identity full` on `recipe_sections` so DELETE realtime events carry filter columns, and the recipe channel subscribes to that table. **(C) Host live-edit during cooking.** Long-press a task on Cook tab (head-chef only) → EditModal with description + Delete. Long-press an ingredient on Shop tab → same. "+ add task" per section, "+ add ingredient" at the bottom of the Shop list (both host-only). New provider method `dispatchRecipe(action)` calls `update-recipe` and applies the response to provider state.
 - ✅ **Phase 7 (polish + TestFlight):** **Tutorial sheet** — `HowItWorksSheet` opens from the "how does this work?" link on Landing, 3 short paragraphs (one recipe / drop a recipe in / split the work). **Empty + celebration states** — sticky sage banner above the bottom tab bar when all tasks (or all ingredients) are checked off, with a Switch-to-Cook link on Shop and a Wrap-up CTA on Cook (head chef only). Banners are dismissible via X and re-arm when completion drops below 100%. **Wrap-up flow** — terracotta "Done?" pill next to the recipe title on Cook tab (host-only) opens `WrapUpSheet` with stats row (tasks done / items bought / cooks), heads-up warning if tasks remain, "End kitchen" + "Keep cooking" buttons. Joined cooks now see "[head chef] wrapped up the kitchen. Hope it was tasty!" with the head chef's actual name instead of a generic alert. **App icon + splash** — terracotta chef-hat-over-crossed-utensils mark on cream `#F7F5F0`, baked over the cream for the iOS icon, transparent for the splash (Expo composites over `splash.backgroundColor`). `app.json` updates: `name: "CookCrew"` (was `cooking-app`), `supportsTablet: false`, `bundleIdentifier: com.cookcrew.app`, `infoPlist.ITSAppUsesNonExemptEncryption: false` (suppresses the export-compliance prompt on every build). **EAS + TestFlight** — Expo project `b4803840-dc8c-4064-acf4-21a2471996ed` under `@nickzett84`. `eas.json` has dev / preview / production profiles with Supabase env vars mirrored from `.env.local` (the production env also has `autoIncrement: true` so iOS buildNumber bumps each upload). Apple Developer team is Florian's (`PPG8Z67MX3`); Nick is an App Manager. **App Store Connect API key** registered with EAS for fully-automated submits — the `.p8` lives in 1Password, only the key ID + issuer ID + the EAS-cached credential are needed for subsequent builds. Distribution certificate + provisioning profile were generated once under Florian's account (cert + profile valid through May 2027) and now live on EAS's servers; future builds reuse them with no Apple ID prompt. **OTA updates** wired (`runtimeVersion: { policy: "appVersion" }` + `updates.url`) so JS-only fixes ship via `eas update --branch production --message "..."` in ~30s instead of a 30-min rebuild. **Realtime resilience** — `KitchenProvider` listens for `AppState` change to `'active'` and refetches the active recipe + cook list via REST. Without this, a cook who backgrounded their phone on cellular right when the host tapped Start cooking would miss the `recipes` UPDATE event and stay stuck on the Lobby forever (real bug from the first TestFlight test with Florian on cellular). Pattern: any time you rely on a realtime event to drive a screen transition, also refetch on AppState foreground.
+- ✅ **Post-TestFlight polish (v1.x via OTA):** Two polish rounds shipped after first real cooks with Florian. **Round 1:** (1) CodeInput on Join Kitchen — long-press to paste from clipboard, terracotta border + caret on the active slot (only while keyboard up). (2) "Hang tight" empty state on the Cooking screen and "You're on" chip in Ask Claude rebuilt with more visual weight (icon disc + display headline; chip stretches full-width and wraps long task descriptions instead of one-line truncation). (3) New `CodeChip` component (`src/components/CodeChip.tsx`) shows the kitchen code with tap-to-copy + "Copied" feedback; added to Recipe Import and Recipe Review headers alongside `AvatarStack` + `PeopleSheet` so friends can join while the host is picking/editing a recipe. (4) Lobby's invite UX consolidated: "Copy code" + "Send by text" buttons side-by-side on one "Invite friends" card; "+ invite more" tile removed from PeopleSheet. (5) `parse-recipe` edge function gained `sourceType: 'text'` with inline `text` field (skip Storage, send text directly to Claude); `RecipeImportScreen` has a 4th `ImportCard` "Paste recipe text" that opens a bottom-sheet modal with a multiline TextInput (long-press to paste from Notes/email/etc.). **Round 2:** (1) CodeInput active slot persists when fully typed (was disappearing once `value.length === length`, leaving no cue you could still backspace). (2) Explicit "Paste from clipboard" terracotta link below the slots — long-press alone wasn't discoverable. (3) Non-host "Hang tight" footer on Lobby is now a terracotta-tinted banner with a restaurant icon, not a small grey one-liner. **OTA channel discipline learned the hard way:** Round 1's `eas update` published to the `production` branch but the running TestFlight build (#7) never picked it up — no `channel` declared in `eas.json`'s production profile meant `expo-updates` had no way to query a specific branch. Fix: created a `production` channel on EAS dashboard linked to the `production` branch, added `"channel": "production"` to the production build profile in `eas.json`, rebuilt as #8 and resubmitted. From #8 forward, OTA round-trip is ~3 min. Also added `expo-updates` as an explicit `package.json` dependency (was missing).
 
 ### v2 deferrals
 
@@ -123,13 +124,27 @@ conversation context are not enough — they get lost.
 
 ## Git workflow
 
-- **Never push directly to main.** Every change goes through a PR, even small
-  ones. Branch name describes the chunk: `claude/auth-screen`, not `claude/fix`.
-- **One concern per PR.** If you find yourself writing two unrelated commit
-  messages, that's two PRs.
+Repo: <https://github.com/nickzett84/cookcrew> (private). Credentials are in macOS
+Keychain via a PAT (90-day expiry) — `git push` from this Mac works without prompts.
+
+Pragmatic for solo dev: not every change needs a PR.
+
+- **Branch for non-trivial changes** — features, refactors, anything you'd want
+  to revert as one unit. Name the branch by the chunk: `code-input-polish`,
+  `text-paste-import`, not `fix`.
+- **Direct-commit to main** is fine for trivia: doc tweaks, typos, one-line
+  obvious fixes. Don't make a branch just to perform the ceremony.
+- **One concern per branch / commit.** If you're writing two unrelated commit
+  messages, that's two branches or at least two commits.
+- **Merge fast-forward locally**, push to GitHub. No PR UI ceremony needed for
+  solo work; the GitHub repo is purely backup + history.
 - **Delete branches after merge.** No long-lived feature branches.
 - **Don't bypass safety checks.** No `--no-verify`, no `--force-push` to main,
   no `git reset --hard` on uncommitted work without explicit OK.
+
+I'll flag git actions explicitly when they make sense (after a feature is working,
+after a bug fix is verified) and spell out the exact commands. You don't have to
+think about git on your own.
 
 ## Before merging any PR
 
@@ -191,6 +206,19 @@ This needs care:
 - **Two kinds of changes:** JS-only changes ship via `eas update` (OTA, takes
   seconds). Native changes (new packages with native code, `app.json` native
   fields, version bumps) require `eas build` and a fresh TestFlight install.
+- **OTA needs all four things wired or it silently no-ops.** Burned us once,
+  cost us a rebuild round-trip:
+  1. `expo-updates` is installed in `package.json`.
+  2. `runtimeVersion: { policy: "appVersion" }` + `updates.url` are set in
+     `app.json`.
+  3. `"channel": "production"` is set in the production build profile in
+     `eas.json` (NOT just the EAS dashboard — the build embeds the channel
+     name at compile time).
+  4. A `production` channel exists on EAS and is linked to the `production`
+     branch (`eas channel:create production` once, then it auto-routes).
+  Without (3), `eas update --branch production` publishes successfully and
+  the device just never queries the right channel. Symptom: OTA "succeeded"
+  but the running app doesn't change.
 - **OTA version label.** Maintain a hardcoded `OTA_VERSION` string surfaced
   somewhere visible in the app (e.g. Settings footer). **Bump it BEFORE you
   run `eas update`** — otherwise you can't tell on-device which bundle landed.
