@@ -16,6 +16,8 @@ Recipes get imported as a photo or PDF and parsed by Claude into a structured, s
 
 ## 2. v1 scope (what's in, what's out)
 
+> **STATUS UPDATE (2026-06-20): v1 is complete and shipped to TestFlight. The project is pivoting to a COMMERCIAL product.** v1 was built for a friends-only trust model (anonymous, no auth, public storage, no cost controls). Going commercial reorders the roadmap — see §11 for the v2 "commercial foundation" plan. The v1 scope below is preserved as the historical record of what shipped; it is no longer the active fence.
+
 ### In scope for v1
 - iOS only (testing on iPhone via TestFlight)
 - Anonymous use — name + room code, no signup
@@ -362,18 +364,38 @@ We'll build in chunks. Each phase is a working app you can test before moving on
 
 ---
 
-## 11. v2 wishlist (do not build in v1)
+## 11. v2 — commercial foundation (the active roadmap)
 
-In rough priority order, when we revisit:
-1. User accounts (Sign in with Apple is easiest)
-2. Recipe history / saved recipes per user
-3. Video recipe parsing
-4. Android release
-5. Push notifications (delegated tasks via real iOS notifications)
-6. Multi-recipe kitchens (cooking two dishes at once)
-7. Timer integration (when a task says "bake 20 minutes," set a real timer)
-8. **Disconnect detection + sous-chef auto-promotion.** Trimmed from v1 Phase 6 — see decision log 2026-05-12. Needs client heartbeat (cooks update `last_seen_at` every ~15s) + a `claim-host` edge function that any cook can call. The function double-checks `head chef.last_seen_at` is stale, then atomically swaps `main_cook_id ← sous_chef_id` and clears `sous_chef_id`. UI flips on the realtime UPDATE.
-9. **iOS Share Extension for recipe import from Safari / NYT Cooking / other browsers.** User selects a recipe URL in another app → taps Share → picks CookCrew → the URL is handed off and parsed via `parse-recipe`. Requires a separate iOS target (not OTA-able — full `eas build` rebuild needed to ship it), Expo config plugin to declare the extension, and an inter-process channel to pass the URL from the extension into the main app. Worth doing once we know real users want it.
+**Decided 2026-06-20:** CookCrew is going commercial. Model = **freemium** (free tier with a monthly cap on Claude-backed actions, paid unlock for unlimited). Launch = **iOS-first, polished** (build the full foundation incl. multi-recipe before going public; validate willingness-to-pay on iOS before investing in Android). See decision log §12 (2026-06-20).
+
+Going commercial makes three things non-negotiable that the friends-only v1 skipped. They outrank the feature work:
+
+- **Cost & abuse control.** v1 edge functions are unauthenticated — any client can run Opus parses + Haiku chat against our Anthropic key. Public, that's unbounded spend exposure. Must gate behind auth + per-user rate limits + a hard spend cap before launch. (Freemium metering doubles as this control.)
+- **Security & privacy hardening.** v1 trust model is "friends won't sabotage you": public `recipe-uploads` bucket, `device_id` impersonation, trust-assuming RLS. Commercial requires private bucket + signed URLs, real identity, tighter RLS. (Several decision-log rows already flag these as "harden when we add auth.")
+- **Legal / App Store.** Privacy policy + data-handling disclosures; **Apple mandates in-app account deletion** once accounts exist; charging = In-App Purchase.
+
+### Build sequence (phases 8–13, each unblocks the next)
+
+8. **Accounts.** Sign in with Apple via Supabase Auth + account deletion. Nuance: only the **host** (who consumes Claude parses) needs an account; guests joining a kitchen stay name-only, preserving the "tap a code and you're in" flow.
+9. **Cost/abuse + metering.** Auth-gate every edge function (reverses the v1 `--no-verify-jwt` stance — real Supabase Auth gives real JWTs to verify), per-user usage counters + rate limits, private storage bucket + signed URLs, hard Anthropic spend cap/alerts.
+10. **Freemium paywall.** RevenueCat + Apple IAP; free-tier limits enforced server-side via Phase 9 metering; paywall UI; privacy policy + terms.
+11. **Recipe history / saved recipes.** Per-user saved recipes + re-cook flow (rides on accounts).
+12. **Multi-recipe kitchens** (cooking 2+ dishes in one kitchen). Schema (kitchen → many recipes), provider, both realtime channels, and a recipe-switcher UI. Biggest *feature* rebuild; sequenced after the money/safety layer.
+13. **Small wins (batch).** Rejoin-last-kitchen on launch; recipe scaling ("double it" — likely a Claude rescale round-trip since quantities are free-text); timer integration; iOS Share Extension (separate iOS target, requires `eas build`, not OTA-able).
+
+### Operational prerequisites (not features, but block Phase 10)
+
+The stack currently runs on **Florian's dad's accounts**. Before charging money:
+- Apple Developer account in Nick's name (or an LLC) — App Store sales land in the account holder's bank.
+- Supabase **paid** plan under Nick's own org (free tier won't carry paying users; don't put production billing on someone else's account).
+- Nick's own Anthropic account with billing + spend caps.
+
+## 11b. v3 — reach & scale (deferred past commercial launch)
+
+1. **Android release.** Expo is already cross-platform; the work is testing + Play Store setup + re-homing iOS-only native bits (share extension). Fast-follow once iOS conversion is proven.
+2. **Push notifications** (delegated tasks via real iOS notifications; in-app banners cover live cooking for now).
+3. **Disconnect detection + sous-chef auto-promotion.** Trimmed from v1 Phase 6 — see decision log 2026-05-12. Needs client heartbeat (cooks update `last_seen_at` every ~15s) + a `claim-host` edge function any cook can call: it double-checks `head chef.last_seen_at` is stale, then atomically swaps `main_cook_id ← sous_chef_id` and clears `sous_chef_id`. UI flips on the realtime UPDATE.
+4. **Video recipe parsing** (TikTok/Reels) — niche + technically heavy (transcript/frames).
 
 ---
 
@@ -429,6 +451,10 @@ Architectural and visual decisions, with what was considered and why we picked. 
 | 2026-06-16 | **`parse-recipe` accepts `sourceType: 'text'` with an inline `text` field** (up to 20k chars) as a fourth import path. Discriminated input: `{ sourcePath, sourceType: 'photo'\|'pdf' }` OR `{ text, sourceType: 'text' }`. Storage roundtrip is skipped for the text path. System prompt and error copy generalized from "image or PDF" to cover all three sources. | A separate `parse-recipe-text` edge function; or upload the text as a `.txt` to Storage and reuse the existing `sourcePath` path. | Real users had recipes in Apple Notes / emails / web pages they'd already copied — making them screenshot to use the photo path was silly when Claude can read text directly. A single function with a discriminated source type keeps auth + persistence + DB writes in one place; only the "what gets sent to Claude" branch changes. Skipping Storage avoids round-trip latency that adds nothing for text. |
 | 2026-06-16 | **Invite UX consolidated to one card on the Lobby** ("Invite friends" with the code + "Copy code" / "Send by text" buttons side-by-side). PeopleSheet's "+ invite more" tile was removed. | Keep the dual-path (Lobby Copy button + PeopleSheet Share Sheet); or keep PeopleSheet as a separate "invite more" entry point. | Two paths for the same job felt inconsistent — neither felt like THE place to invite. Putting both actions visibly on the Lobby card makes the choice explicit (copy vs. send) and frees PeopleSheet to focus on its actual job (who's in the kitchen, sous chef appointment, end/leave). |
 | 2026-06-18 | **OTA-capable iOS builds need a `channel` name in `eas.json`'s build profile** in addition to `expo-updates`, `runtimeVersion`, and `updates.url`. Production builds set `"channel": "production"`. A matching channel must also exist on the EAS dashboard (`eas channel:create production`) linked to the `production` branch. | Trust Expo's default channel routing (which we did initially); use a fingerprint-based runtime version that auto-routes. | First OTA after enabling `eas update` published successfully to the `production` branch but never reached the running TestFlight build — `expo-updates` queries EAS using the channel header baked into the build, and our build profile had no channel set. Symptom was confusing: `eas update` reported success, but the device never changed. Cost us a full rebuild + TestFlight resubmit cycle (build #7 → #8) before the OTA pipeline was usable. Now load-bearing across all future updates. Pattern documented in CLAUDE.md's Expo/EAS section. |
+| 2026-06-20 | **CookCrew is going commercial.** v1 (friends-only, anonymous, shipped to TestFlight) is the historical baseline; v2 becomes the "commercial foundation" (§11). | Stay a free friends-only app; or open-source it. | Nick decided to take it to market. This reorders the whole roadmap: features stop being the priority and three table-stakes layers move to the top — cost/abuse control, security/privacy hardening, and legal/monetization. Several v1 "trust model" decisions (public bucket, `--no-verify-jwt`, `device_id` identity) were explicitly logged as "fine for friends, harden when commercial" — that time is now. |
+| 2026-06-20 | **Monetization model = freemium** (free monthly cap on Claude-backed actions; paid unlock for unlimited). Enforced server-side via per-user usage metering. | Subscription-only; one-time purchase; ad-supported. | Freemium lets people try before paying and the per-user metering it requires *is* the cost/abuse control we need anyway (one mechanism, two jobs). One-time purchase was rejected — a flat fee doesn't cover the ongoing per-parse Claude cost for heavy users (margin risk). Billing via Apple IAP, likely through RevenueCat to keep receipt-validation off our backend. |
+| 2026-06-20 | **Commercial launch is iOS-first and polished, not a lean MVP.** Build the full v2 foundation (incl. multi-recipe + small wins) before going public; Android is a v3 fast-follow. | Lean MVP (ship paywall + accounts only, validate willingness-to-pay, defer multi-recipe); or simultaneous iOS+Android launch. | Nick wants a strong first impression over a fast probe. Validate willingness-to-pay on one polished platform before paying the Android tax (testing + Play Store + re-homing iOS-only native bits). Multi-recipe is Nick's stated must-have, so it's in the v2 cut despite being the biggest feature rebuild — sequenced after the money/safety layer. |
+| 2026-06-20 | **Going commercial reverses the v1 `--no-verify-jwt` stance (planned, Phase 9).** With real Supabase Auth (Sign in with Apple), edge functions can verify real JWTs again. | Keep functions open and rely solely on in-function `device_id` membership checks. | The `--no-verify-jwt` decision (2026-05-07) was forced by the non-JWT publishable-key format AND was acceptable only under the friends-only trust model. Real auth gives us real bearer tokens to verify at the gateway, closing the "anyone can call our Claude-backed functions" hole that's a hard launch-blocker commercially. This is planned work, not yet implemented — flagged here so the original row isn't read as still-current intent. |
 
 For visual tokens (colors, typography, spacing, radii) the canonical source is `src/theme/`. WIREFRAMES.md §1 reflects the same values; if the two ever drift, treat `src/theme/` as authoritative for what ships and update WIREFRAMES.md to match.
 
