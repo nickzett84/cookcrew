@@ -14,7 +14,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Keyboard,
 } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, fonts, sizes, radius } from '../theme';
 import { useKitchen } from '../lib/kitchen';
@@ -63,6 +65,21 @@ export function AskTab() {
       Alert.alert("Couldn't reach Claude", e instanceof Error ? e.message : 'Try again.');
     }
   };
+
+  // The chat ScrollView dismisses the keyboard via keyboardDismissMode, but the
+  // composer area below it isn't scrollable — so a downward swipe there does
+  // nothing. This pan gesture covers that area: it only activates after a 15px
+  // downward drag (so taps on the input / send / toggle pass straight through),
+  // then dismisses the keyboard. runOnJS(true) keeps the handler on the JS
+  // thread so we can call Keyboard.dismiss directly.
+  const dismissGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY(15)
+        .runOnJS(true)
+        .onStart(() => Keyboard.dismiss()),
+    [],
+  );
 
   const empty = chatMessages.length === 0;
 
@@ -175,6 +192,7 @@ export function AskTab() {
         )}
       </ScrollView>
 
+      <GestureDetector gesture={dismissGesture}>
       <View
         style={{
           paddingHorizontal: 12,
@@ -331,6 +349,7 @@ export function AskTab() {
           </Text>
         </Pressable>
       </View>
+      </GestureDetector>
     </KeyboardAvoidingView>
   );
 }
