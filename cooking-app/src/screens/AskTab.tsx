@@ -82,6 +82,7 @@ export function AskTab() {
           flexGrow: 1,
         }}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
       >
         {empty ? (
           <EmptyState />

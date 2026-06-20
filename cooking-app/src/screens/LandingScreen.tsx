@@ -6,6 +6,7 @@ import { Btn } from '../components/Btn';
 import { HowItWorksSheet } from '../components/HowItWorksSheet';
 import { colors, fonts, sizes, space } from '../theme';
 import { RootStackParamList } from '../navigation/types';
+import { OTA_VERSION } from '../version';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
@@ -80,6 +81,16 @@ export function LandingScreen({ navigation }: Props) {
               how does this work?
             </Text>
           </Pressable>
+          <Text
+            style={{
+              fontFamily: fonts.body,
+              fontSize: sizes.xs,
+              color: colors.inkFaint,
+              marginTop: 8,
+            }}
+          >
+            {OTA_VERSION}
+          </Text>
         </View>
       </View>
 

@@ -42,6 +42,14 @@ export type KitchenState = {
   // this is the simpler "fire and rely on realtime to reconcile" version.
   dispatchRecipe: (action: RecipeAction) => Promise<void>;
 
+  // Optimistic drag-and-drop reorder for the Cooking screen (head chef only).
+  // The screen computes the reordered task list for instant apply; the provider
+  // fires move_task and reconciles with the server result, reverting on error.
+  moveTask: (
+    action: { taskId: string; targetSectionId: string; targetIndex: number },
+    reorderedTasks: Task[],
+  ) => Promise<void>;
+
   // Shared chat thread across the kitchen. Both questions and answers live
   // in `chatMessages`. `askClaude` POSTs the message; the assistant reply
   // arrives via realtime once Claude responds.

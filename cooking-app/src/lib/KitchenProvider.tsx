@@ -476,6 +476,33 @@ export function KitchenProvider({ children }: { children: ReactNode }) {
     [kitchen, deviceId, meId, ingredients],
   );
 
+  // Optimistic task reorder for the Cooking screen's drag-and-drop. The screen
+  // computes the fully-reordered task list (new section_id + order_index per
+  // row) and hands it over for instant apply; we then fire move_task and
+  // reconcile with the server's authoritative result. Revert on error.
+  const moveTask = useCallback(
+    async (
+      action: { taskId: string; targetSectionId: string; targetIndex: number },
+      reorderedTasks: Task[],
+    ) => {
+      if (!recipe || !deviceId) throw new Error('No active recipe');
+      const prev = tasks;
+      setTasks(reorderedTasks);
+      try {
+        const result = await api.updateRecipe({
+          recipeId: recipe.id,
+          deviceId,
+          action: { type: 'move_task', ...action },
+        });
+        setTasks(result.tasks);
+      } catch (e) {
+        setTasks(prev);
+        throw e;
+      }
+    },
+    [recipe, deviceId, tasks],
+  );
+
   const dispatchRecipe = useCallback(
     async (action: RecipeAction) => {
       if (!recipe || !deviceId) throw new Error('No active recipe');
@@ -539,6 +566,7 @@ export function KitchenProvider({ children }: { children: ReactNode }) {
     assignTask,
     assignIngredient,
     dispatchRecipe,
+    moveTask,
     chatMessages,
     askingClaude,
     askClaude,

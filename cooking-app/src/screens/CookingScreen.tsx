@@ -3,6 +3,7 @@ import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import DraggableFlatList, { RenderItemParams } from 'react-native-draggable-flatlist';
 import { TopBar } from '../components/TopBar';
 import { Checkbox } from '../components/Checkbox';
 import { AssignChip } from '../components/AssignChip';
@@ -15,7 +16,7 @@ import { AskTab } from './AskTab';
 import { colors, fonts, sizes, space } from '../theme';
 import { RootStackParamList } from '../navigation/types';
 import { useKitchen } from '../lib/kitchen';
-import type { Task, Ingredient, Cook } from '../lib/api';
+import type { Task, Ingredient, Cook, RecipeSection } from '../lib/api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Cooking'>;
 
@@ -42,6 +43,16 @@ type EditTarget =
   | { kind: 'section_new' }
   | { kind: 'section_edit'; sectionId: string; title: string };
 
+// Flattened rows for the Cook tab's DraggableFlatList. Only `task` rows are
+// draggable (head chef only); headers/buttons keep their position because they
+// never initiate a drag.
+type CookRow =
+  | { type: 'header'; key: string; section: RecipeSection }
+  | { type: 'emptyNote'; key: string }
+  | { type: 'task'; key: string; task: Task; indexInSection: number }
+  | { type: 'addTask'; key: string; section: RecipeSection }
+  | { type: 'addSection'; key: string };
+
 export function CookingScreen({ navigation }: Props) {
   const {
     kitchen,
@@ -58,6 +69,7 @@ export function CookingScreen({ navigation }: Props) {
     assignTask,
     assignIngredient,
     dispatchRecipe,
+    moveTask,
     leaveKitchen,
     endKitchen,
     reset,
@@ -380,6 +392,219 @@ export function CookingScreen({ navigation }: Props) {
     );
   };
 
+  // Head-chef long-press menu on a Cook-tab section header (rename / delete).
+  const sectionLongPress = (section: RecipeSection, taskCount: number) =>
+    isHost
+      ? () => {
+          Alert.alert(`"${section.title}"`, undefined, [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Rename',
+              onPress: () =>
+                setEditTarget({ kind: 'section_edit', sectionId: section.id, title: section.title }),
+            },
+            {
+              text: 'Delete section',
+              style: 'destructive',
+              onPress: () => {
+                Alert.alert(
+                  `Delete "${section.title}"?`,
+                  taskCount > 0
+                    ? `This also deletes ${taskCount} task${taskCount === 1 ? '' : 's'} in this section.`
+                    : undefined,
+                  [
+                    { text: 'Never mind', style: 'cancel' },
+                    {
+                      text: 'Delete',
+                      style: 'destructive',
+                      onPress: () =>
+                        dispatchRecipe({ type: 'delete_section', sectionId: section.id }).catch((e) =>
+                          Alert.alert("Couldn't delete", e instanceof Error ? e.message : 'Try again.'),
+                        ),
+                    },
+                  ],
+                );
+              },
+            },
+          ]);
+        }
+      : undefined;
+
+  // Flattened rows for the Cook tab. Only task rows are draggable. The host's
+  // per-section "+ add task" and the trailing "+ add section" are rows too.
+  const cookRows = useMemo<CookRow[]>(() => {
+    const rows: CookRow[] = [];
+    for (const section of sections) {
+      rows.push({ type: 'header', key: `h:${section.id}`, section });
+      const sectionTasks = tasks
+        .filter((t) => t.section_id === section.id)
+        .sort((a, b) => a.order_index - b.order_index);
+      if (sectionTasks.length === 0) {
+        rows.push({ type: 'emptyNote', key: `e:${section.id}` });
+      } else {
+        sectionTasks.forEach((task, i) =>
+          rows.push({ type: 'task', key: `t:${task.id}`, task, indexInSection: i }),
+        );
+      }
+      if (isHost) rows.push({ type: 'addTask', key: `a:${section.id}`, section });
+    }
+    if (isHost) rows.push({ type: 'addSection', key: 'add-section' });
+    return rows;
+  }, [sections, tasks, isHost]);
+
+  // Reorder handler mirrors RecipeReview: walk the dropped row order, reassign
+  // each task a (section_id, order_index) under its preceding header, then fire
+  // the optimistic move.
+  const onCookDragEnd = ({ data, to }: { data: CookRow[]; from: number; to: number }) => {
+    let currentSectionId: string | null = null;
+    let indexInSection = 0;
+    let movedTaskId: string | null = null;
+    let movedTarget: { sectionId: string; index: number } | null = null;
+    const reordered: Task[] = [];
+
+    for (let i = 0; i < data.length; i++) {
+      const row = data[i];
+      if (row.type === 'header') {
+        currentSectionId = row.section.id;
+        indexInSection = 0;
+      } else if (row.type === 'task') {
+        const sectionId = currentSectionId ?? sections[0]?.id;
+        if (!sectionId) continue;
+        reordered.push({ ...row.task, section_id: sectionId, order_index: indexInSection });
+        if (i === to) {
+          movedTaskId = row.task.id;
+          movedTarget = { sectionId, index: indexInSection };
+        }
+        indexInSection++;
+      }
+    }
+
+    if (!movedTaskId || !movedTarget) return;
+    moveTask(
+      { taskId: movedTaskId, targetSectionId: movedTarget.sectionId, targetIndex: movedTarget.index },
+      reordered,
+    ).catch((e) => Alert.alert("Couldn't move task", e instanceof Error ? e.message : 'Try again.'));
+  };
+
+  const renderCookRow = ({ item, drag, isActive }: RenderItemParams<CookRow>) => {
+    switch (item.type) {
+      case 'header': {
+        const section = item.section;
+        const sectionTasks = tasks.filter((t) => t.section_id === section.id);
+        const sectionDone = sectionTasks.length > 0 && sectionTasks.every((t) => !!t.completed_at);
+        return (
+          <View style={{ paddingHorizontal: 16, marginTop: 24 }}>
+            <Pressable
+              onLongPress={sectionLongPress(section, sectionTasks.length)}
+              delayLongPress={350}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
+            >
+              <Text
+                style={{
+                  fontFamily: fonts.display,
+                  fontSize: sizes.xs,
+                  color: sectionDone ? colors.inkFaint : colors.accent,
+                  letterSpacing: 0.6,
+                  textTransform: 'uppercase',
+                }}
+              >
+                {section.title}
+              </Text>
+              {sectionDone && <Ionicons name="checkmark-circle" size={14} color={colors.sage} />}
+            </Pressable>
+          </View>
+        );
+      }
+      case 'emptyNote':
+        return (
+          <View style={{ paddingHorizontal: 16 }}>
+            <Text
+              style={{
+                fontFamily: fonts.body,
+                fontSize: sizes.sm,
+                color: colors.inkFaint,
+                fontStyle: 'italic',
+                paddingVertical: 12,
+              }}
+            >
+              No tasks in this section.
+            </Text>
+          </View>
+        );
+      case 'task':
+        return (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              paddingHorizontal: 16,
+              backgroundColor: isActive ? colors.surface : 'transparent',
+            }}
+          >
+            <View style={{ flex: 1 }}>{renderTaskRow(item.task)}</View>
+            {isHost && (
+              <Pressable
+                onLongPress={drag}
+                delayLongPress={150}
+                hitSlop={8}
+                style={{ paddingLeft: 6, paddingVertical: 6 }}
+              >
+                <Ionicons name="reorder-three" size={22} color={colors.inkFaint} />
+              </Pressable>
+            )}
+          </View>
+        );
+      case 'addTask':
+        return (
+          <View style={{ paddingHorizontal: 16 }}>
+            <Pressable
+              onPress={() =>
+                setEditTarget({
+                  kind: 'task_new',
+                  sectionId: item.section.id,
+                  sectionTitle: item.section.title,
+                })
+              }
+              hitSlop={4}
+              style={{ paddingVertical: 8 }}
+            >
+              <Text style={{ fontFamily: fonts.bodyMed, fontSize: sizes.sm, color: colors.accent }}>
+                + add task
+              </Text>
+            </Pressable>
+          </View>
+        );
+      case 'addSection':
+        return (
+          <View style={{ paddingHorizontal: 16 }}>
+            <Pressable
+              onPress={() => setEditTarget({ kind: 'section_new' })}
+              hitSlop={6}
+              style={{
+                marginTop: 28,
+                paddingTop: 14,
+                paddingBottom: 6,
+                borderTopWidth: 1,
+                borderTopColor: colors.lineSoft,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: fonts.bodyMed,
+                  fontSize: sizes.sm,
+                  color: colors.accent,
+                  letterSpacing: 0.4,
+                  textTransform: 'uppercase',
+                }}
+              >
+                + add section
+              </Text>
+            </Pressable>
+          </View>
+        );
+    }
+  };
+
   const renderIngredientRow = (i: Ingredient) => {
     const checked = !!i.checked_at;
     const onToggle = () => {
@@ -463,197 +688,67 @@ export function CookingScreen({ navigation }: Props) {
 
       <View style={{ flex: 1 }}>
         {tab === 'cook' && (
-          <ScrollView
-            style={{ flex: 1 }}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 16, paddingBottom: 16 }}
-          >
-            <View
-              style={{
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                justifyContent: 'space-between',
-                gap: 12,
-              }}
-            >
-              <Text
-                style={{
-                  flex: 1,
-                  fontFamily: fonts.display,
-                  fontSize: sizes.xxl,
-                  color: colors.ink,
-                  letterSpacing: -0.3,
-                }}
-              >
-                {recipe.title || 'Untitled recipe'}
-              </Text>
-              {isHost && (
-                <Pressable
-                  onPress={() => setWrapUpOpen(true)}
-                  hitSlop={8}
-                  style={({ pressed }) => ({
-                    paddingVertical: 6,
-                    paddingHorizontal: 10,
-                    borderRadius: 999,
-                    borderWidth: 1,
-                    borderColor: colors.accent,
-                    opacity: pressed ? 0.6 : 1,
-                  })}
+          <DraggableFlatList
+            data={cookRows}
+            keyExtractor={(item) => item.key}
+            renderItem={renderCookRow}
+            onDragEnd={onCookDragEnd}
+            activationDistance={12}
+            contentContainerStyle={{ paddingBottom: 16 }}
+            ListHeaderComponent={
+              <View style={{ paddingHorizontal: 16, paddingTop: 16 }}>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'flex-start',
+                    justifyContent: 'space-between',
+                    gap: 12,
+                  }}
                 >
                   <Text
                     style={{
-                      fontFamily: fonts.bodyMed,
-                      fontSize: sizes.sm,
-                      color: colors.accent,
+                      flex: 1,
+                      fontFamily: fonts.display,
+                      fontSize: sizes.xxl,
+                      color: colors.ink,
+                      letterSpacing: -0.3,
                     }}
                   >
-                    Done?
+                    {recipe.title || 'Untitled recipe'}
                   </Text>
-                </Pressable>
-              )}
-            </View>
-            <Progress done={doneTasks} total={totalTasks} label={`${doneTasks} of ${totalTasks} done`} />
-
-            {sections.map((section) => {
-              const sectionTasks = tasks
-                .filter((t) => t.section_id === section.id)
-                .sort((a, b) => a.order_index - b.order_index);
-              const sectionDone =
-                sectionTasks.length > 0 && sectionTasks.every((t) => !!t.completed_at);
-              const onSectionLongPress = isHost
-                ? () => {
-                    Alert.alert(`"${section.title}"`, undefined, [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'Rename',
-                        onPress: () =>
-                          setEditTarget({
-                            kind: 'section_edit',
-                            sectionId: section.id,
-                            title: section.title,
-                          }),
-                      },
-                      {
-                        text: 'Delete section',
-                        style: 'destructive',
-                        onPress: () => {
-                          const taskCount = sectionTasks.length;
-                          Alert.alert(
-                            `Delete "${section.title}"?`,
-                            taskCount > 0
-                              ? `This also deletes ${taskCount} task${taskCount === 1 ? '' : 's'} in this section.`
-                              : undefined,
-                            [
-                              { text: 'Never mind', style: 'cancel' },
-                              {
-                                text: 'Delete',
-                                style: 'destructive',
-                                onPress: () =>
-                                  dispatchRecipe({ type: 'delete_section', sectionId: section.id }).catch(
-                                    (e) =>
-                                      Alert.alert(
-                                        "Couldn't delete",
-                                        e instanceof Error ? e.message : 'Try again.',
-                                      ),
-                                  ),
-                              },
-                            ],
-                          );
-                        },
-                      },
-                    ]);
-                  }
-                : undefined;
-              return (
-                <View key={section.id} style={{ marginTop: 24 }}>
-                  <Pressable
-                    onLongPress={onSectionLongPress}
-                    delayLongPress={350}
-                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}
-                  >
-                    <Text
-                      style={{
-                        fontFamily: fonts.display,
-                        fontSize: sizes.xs,
-                        color: sectionDone ? colors.inkFaint : colors.accent,
-                        letterSpacing: 0.6,
-                        textTransform: 'uppercase',
-                      }}
+                  {isHost && (
+                    <Pressable
+                      onPress={() => setWrapUpOpen(true)}
+                      hitSlop={8}
+                      style={({ pressed }) => ({
+                        paddingVertical: 6,
+                        paddingHorizontal: 10,
+                        borderRadius: 999,
+                        borderWidth: 1,
+                        borderColor: colors.accent,
+                        opacity: pressed ? 0.6 : 1,
+                      })}
                     >
-                      {section.title}
-                    </Text>
-                    {sectionDone && (
-                      <Ionicons name="checkmark-circle" size={14} color={colors.sage} />
-                    )}
-                  </Pressable>
-                  <View style={{ marginTop: 6 }}>
-                    {sectionTasks.length === 0 ? (
                       <Text
                         style={{
-                          fontFamily: fonts.body,
+                          fontFamily: fonts.bodyMed,
                           fontSize: sizes.sm,
-                          color: colors.inkFaint,
-                          fontStyle: 'italic',
-                          paddingVertical: 12,
+                          color: colors.accent,
                         }}
                       >
-                        No tasks in this section.
+                        Done?
                       </Text>
-                    ) : (
-                      sectionTasks.map(renderTaskRow)
-                    )}
-                    {isHost && (
-                      <Pressable
-                        onPress={() =>
-                          setEditTarget({
-                            kind: 'task_new',
-                            sectionId: section.id,
-                            sectionTitle: section.title,
-                          })
-                        }
-                        hitSlop={4}
-                        style={{ paddingVertical: 8 }}
-                      >
-                        <Text
-                          style={{
-                            fontFamily: fonts.bodyMed,
-                            fontSize: sizes.sm,
-                            color: colors.accent,
-                          }}
-                        >
-                          + add task
-                        </Text>
-                      </Pressable>
-                    )}
-                  </View>
+                    </Pressable>
+                  )}
                 </View>
-              );
-            })}
-            {isHost && (
-              <Pressable
-                onPress={() => setEditTarget({ kind: 'section_new' })}
-                hitSlop={6}
-                style={{
-                  marginTop: 28,
-                  paddingTop: 14,
-                  paddingBottom: 6,
-                  borderTopWidth: 1,
-                  borderTopColor: colors.lineSoft,
-                }}
-              >
-                <Text
-                  style={{
-                    fontFamily: fonts.bodyMed,
-                    fontSize: sizes.sm,
-                    color: colors.accent,
-                    letterSpacing: 0.4,
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  + add section
-                </Text>
-              </Pressable>
-            )}
-          </ScrollView>
+                <Progress
+                  done={doneTasks}
+                  total={totalTasks}
+                  label={`${doneTasks} of ${totalTasks} done`}
+                />
+              </View>
+            }
+          />
         )}
 
         {tab === 'shop' && (
