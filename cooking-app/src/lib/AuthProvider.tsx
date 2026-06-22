@@ -1,8 +1,20 @@
 import { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import {
+  GoogleSignin,
+  statusCodes,
+  isErrorWithCode,
+} from '@react-native-google-signin/google-signin';
 import { supabase } from './supabase';
 import { api } from './api';
 import { AuthContext, AuthState } from './auth';
+import { GOOGLE_WEB_CLIENT_ID, GOOGLE_IOS_CLIENT_ID } from './authConfig';
+
+GoogleSignin.configure({
+  webClientId: GOOGLE_WEB_CLIENT_ID,
+  iosClientId: GOOGLE_IOS_CLIENT_ID,
+});
 
 // Holds the head chef's signed-in session. Guests never sign in, so for them
 // this provider simply reports `session: null` and everything downstream falls
@@ -25,19 +37,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signInWithApple = useCallback(async () => {
-    // Implemented in the Apple/rebuild step (needs expo-apple-authentication):
-    //   const credential = await AppleAuthentication.signInAsync({
-    //     requestedScopes: [FULL_NAME, EMAIL],
-    //   });
-    //   await supabase.auth.signInWithIdToken({
-    //     provider: 'apple',
-    //     token: credential.identityToken!,
-    //   });
-    throw new Error('Sign in with Apple is not wired yet.');
+    let credential: AppleAuthentication.AppleAuthenticationCredential;
+    try {
+      credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+    } catch (e) {
+      // User tapped Cancel — not an error worth surfacing.
+      if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') return;
+      throw e;
+    }
+    if (!credential.identityToken) throw new Error('Apple did not return an identity token.');
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'apple',
+      token: credential.identityToken,
+    });
+    if (error) throw error;
+  }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    let idToken: string | null = null;
+    try {
+      const response = await GoogleSignin.signIn();
+      if (response.type !== 'success') return; // cancelled
+      idToken = response.data.idToken;
+    } catch (e) {
+      if (isErrorWithCode(e) && e.code === statusCodes.SIGN_IN_CANCELLED) return;
+      throw e;
+    }
+    if (!idToken) throw new Error('Google did not return an ID token.');
+    const { error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: idToken,
+    });
+    if (error) throw error;
   }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
+    // Clear the native Google session too, so the next sign-in shows the
+    // account picker. No-op / throws harmlessly if they signed in via Apple.
+    try {
+      await GoogleSignin.signOut();
+    } catch {
+      /* not a Google session */
+    }
   }, []);
 
   const deleteAccount = useCallback(async () => {
@@ -54,10 +101,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       userId: session?.user.id ?? null,
       email: session?.user.email ?? null,
       signInWithApple,
+      signInWithGoogle,
       signOut,
       deleteAccount,
     }),
-    [ready, session, signInWithApple, signOut, deleteAccount],
+    [ready, session, signInWithApple, signInWithGoogle, signOut, deleteAccount],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

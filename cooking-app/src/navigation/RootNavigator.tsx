@@ -1,5 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { LandingScreen } from '../screens/LandingScreen';
+import { SignInScreen } from '../screens/SignInScreen';
 import { CreateKitchenScreen } from '../screens/CreateKitchenScreen';
 import { JoinKitchenScreen } from '../screens/JoinKitchenScreen';
 import { LobbyScreen } from '../screens/LobbyScreen';
@@ -21,6 +22,7 @@ export function RootNavigator() {
       }}
     >
       <Stack.Screen name="Landing" component={LandingScreen} />
+      <Stack.Screen name="SignIn" component={SignInScreen} />
       <Stack.Screen name="CreateKitchen" component={CreateKitchenScreen} />
       <Stack.Screen name="JoinKitchen" component={JoinKitchenScreen} />
       <Stack.Screen name="Lobby" component={LobbyScreen} />

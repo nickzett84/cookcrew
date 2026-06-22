@@ -21,6 +21,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.cookcrew.app",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -42,11 +43,18 @@
     "plugins": [
       "expo-font",
       "expo-secure-store",
+      "expo-apple-authentication",
       [
         "expo-image-picker",
         {
           "photosPermission": "CookCrew uses your photo library so you can pick recipe images to import.",
           "cameraPermission": "CookCrew uses your camera so you can snap a photo of a recipe page."
+        }
+      ],
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE_WITH_REVERSED_IOS_CLIENT_ID"
         }
       ]
     ],

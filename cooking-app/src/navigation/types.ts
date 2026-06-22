@@ -2,6 +2,7 @@ import type { ParsedRecipe } from '../lib/api';
 
 export type RootStackParamList = {
   Landing: undefined;
+  SignIn: undefined;
   CreateKitchen: undefined;
   JoinKitchen: undefined;
   Lobby: undefined;

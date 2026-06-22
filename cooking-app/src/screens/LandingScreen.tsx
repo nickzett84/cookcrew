@@ -7,12 +7,18 @@ import { Btn } from '../components/Btn';
 import { HowItWorksSheet } from '../components/HowItWorksSheet';
 import { colors, fonts, sizes, space } from '../theme';
 import { RootStackParamList } from '../navigation/types';
+import { useAuth } from '../lib/auth';
 import { OTA_VERSION } from '../version';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Landing'>;
 
 export function LandingScreen({ navigation }: Props) {
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
+  const { session } = useAuth();
+
+  // Hosting requires an account (the host consumes recipe parsing). Signed in →
+  // straight to create; signed out → through the sign-in gate first.
+  const onHost = () => navigation.navigate(session ? 'CreateKitchen' : 'SignIn');
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.paper }}>
@@ -29,7 +35,7 @@ export function LandingScreen({ navigation }: Props) {
 
         <View style={{ flex: 1, justifyContent: 'center', gap: 14 }}>
           <Pressable
-            onPress={() => navigation.navigate('CreateKitchen')}
+            onPress={onHost}
             style={({ pressed }) => ({
               borderRadius: 16,
               padding: 22,

@@ -8,9 +8,10 @@ export type AuthState = {
   userId: string | null;
   email: string | null;
 
-  // Sign in with Apple. Wired in the Apple/rebuild step of Phase 8 (needs the
-  // expo-apple-authentication native module). Throws until then.
+  // Sign-in methods resolve on success, resolve silently if the user cancels,
+  // and throw on a real failure.
   signInWithApple: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
   // Permanently deletes the account server-side, then clears the local session.
   deleteAccount: () => Promise<void>;

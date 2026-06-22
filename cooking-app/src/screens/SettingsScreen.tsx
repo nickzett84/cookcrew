@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { colors, fonts, sizes, space } from '../theme';
 import { RootStackParamList } from '../navigation/types';
+import { SignInButtons } from '../components/SignInButtons';
 import { useAuth } from '../lib/auth';
 import { useKitchen } from '../lib/kitchen';
 import { OTA_VERSION } from '../version';
@@ -131,10 +132,20 @@ export function SettingsScreen({ navigation }: Props) {
             </Pressable>
           </>
         ) : (
-          <Text style={{ fontFamily: fonts.body, fontSize: sizes.md, color: colors.inkSoft, lineHeight: 22 }}>
-            You're not signed in. You'll sign in with Apple the first time you start a kitchen — joining a
-            friend's kitchen never needs an account.
-          </Text>
+          <>
+            <Text
+              style={{
+                fontFamily: fonts.body,
+                fontSize: sizes.md,
+                color: colors.inkSoft,
+                lineHeight: 22,
+                marginBottom: 20,
+              }}
+            >
+              Sign in to host a kitchen. Joining a friend's kitchen with a code never needs an account.
+            </Text>
+            <SignInButtons />
+          </>
         )}
       </View>
 
