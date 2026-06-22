@@ -392,7 +392,16 @@ The stack currently runs on **Florian's dad's accounts**. Before charging money:
 
 ## 11a. Phase 8 detail — Accounts (spec locked 2026-06-20)
 
-**Progress (2026-06-20): Track B (code foundation, no Apple) DONE + on `main`, not yet OTA'd — rides the Apple rebuild.** Migration applied (`cooks.user_id`, `kitchens.owner_user_id`); `create-kitchen` stamps the account when a host token is present (anon still works, verified); `delete-account` deployed; client has the SecureStore-backed auth session, `AuthProvider`/`useAuth`, auth-aware `api.invoke`, and a Settings screen. **Remaining (Track A + rebuild):** Apple Developer + Supabase dashboard config, install `expo-apple-authentication`, implement `signInWithApple`, gate create on sign-in, `eas build` + TestFlight.
+**Scope note (2026-06-21):** Phase 8 now ships **both Apple AND Google** sign-in (Nick's call). Apple is native-only (bundle ID in Supabase Client IDs). Google needs a Google Cloud OAuth client (iOS + Web client IDs; Web ID is the `signInWithIdToken` audience) — both IDs go in Supabase Client IDs (web first, comma-sep), no secret for the native idToken flow.
+
+**Progress (2026-06-21): all Track A/B CODE done + on `main`; NOT built yet. Apple dashboard config done (Florian). Google dashboard config pending Florian.** Done: migration (`cooks.user_id`, `kitchens.owner_user_id`); `create-kitchen` stamps the account when a host token is present (anon still works, verified); `delete-account` deployed; SecureStore-backed auth session; `AuthProvider` with real `signInWithApple` + `signInWithGoogle` (`supabase.auth.signInWithIdToken`); `SignInButtons` (native Apple button + Google button); `SignInScreen` create-gate; Landing host-gate; Settings sign-in/out + delete. **Adding the native sign-in modules means the app no longer runs in Expo Go — test via the EAS build.**
+
+**Pre-build checklist (do all before `eas build`):**
+1. Florian sends the Google **Web** + **iOS** client IDs (and adds both to Supabase Client IDs, web first).
+2. Fill `GOOGLE_WEB_CLIENT_ID` + `GOOGLE_IOS_CLIENT_ID` in `src/lib/authConfig.ts`.
+3. Set `app.json` google-signin plugin `iosUrlScheme` to the **reversed** iOS client id (`com.googleusercontent.apps.<id>`).
+4. Bump `app.json` `version` to `1.1.0` (native deps changed → new OTA runtime line, per CLAUDE.md OTA rule) and bump `OTA_VERSION`.
+5. `eas build` (production) → TestFlight → test Apple + Google sign-in, force-quit persistence, anonymous join, account deletion on device.
 
 **Goal:** add real accounts for the **head chef only**; guests keep joining by code with a name. Establishes the durable identity that freemium metering (Phase 9) and history (Phase 11) build on. Scope is identity *only* — no rate limiting, metering, quota, or private-bucket work (those are Phase 9).
 
